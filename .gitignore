@@ -1,0 +1,4 @@
+/book-mockup
+*.o
+*.dSYM/
+mockup.png
