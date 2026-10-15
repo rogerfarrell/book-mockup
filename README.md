@@ -12,7 +12,7 @@ soft floor shadow. Everything is done in one [GEGL](https://gegl.org) graph.
 With Homebrew, from the companion tap:
 
 ```sh
-brew install YOUR_GITHUB_USER/tap/book-mockup
+brew install rogerfarrell/tap/book-mockup
 ```
 
 From source (needs GEGL 0.4 and `pkg-config`/`pkgconf`):
