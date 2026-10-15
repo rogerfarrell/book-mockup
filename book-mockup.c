@@ -1624,7 +1624,7 @@ struct _BmOptions
   char   *output;
 
   double  angle;            /* degrees; 0 front, 90 spine, 180 back     */
-  double  focal;            /* pixels; larger is flatter                */
+  double  perspective;      /* strength; book height ÷ camera distance  */
   double  camera_height;    /* eye above the floor, fraction of height  */
   int     canvas_width;
   int     canvas_height;
@@ -1662,7 +1662,7 @@ bm_options_init_defaults (BmOptions *options)
 {
   *options = (BmOptions) {
     .angle            = 25.0,
-    .focal            = 6000.0,
+    .perspective      = 0.3,
     .camera_height    = 0.5,
     .canvas_width     = 2400,
     .canvas_height    = 2400,
@@ -1730,8 +1730,9 @@ bm_options_parse (BmOptions   *options,
     { "angle", 'a', 0, G_OPTION_ARG_DOUBLE, &options->angle,
       "Rotation in degrees: 0 front, 90 spine, 180 back, 155 back with "
       "spine (default: 25)", "DEG" },
-    { "focal", 'f', 0, G_OPTION_ARG_DOUBLE, &options->focal,
-      "Focal length; larger is flatter (default: 6000)", "PX" },
+    { "perspective", 'p', 0, G_OPTION_ARG_DOUBLE, &options->perspective,
+      "Perspective strength; larger exaggerates the near side, 0 is flat "
+      "(default: 0.3)", "N" },
     { "width", 'W', 0, G_OPTION_ARG_INT, &options->canvas_width,
       "Canvas width (default: 2400)", "PX" },
     { "height", 'H', 0, G_OPTION_ARG_INT, &options->canvas_height,
@@ -1787,6 +1788,13 @@ bm_options_parse (BmOptions   *options,
     {
       g_set_error_literal (error, G_OPTION_ERROR, G_OPTION_ERROR_FAILED,
                            "both --cover and --spine are required");
+      return FALSE;
+    }
+
+  if (options->perspective < 0.0)
+    {
+      g_set_error_literal (error, G_OPTION_ERROR, G_OPTION_ERROR_BAD_VALUE,
+                           "--perspective must be 0 or more");
       return FALSE;
     }
 
@@ -1934,6 +1942,7 @@ bm_book_build_scene (BmScene          *scene,
   double h = options->book_height;
   int cover_w, cover_h, spine_w, spine_h;
   double w, d;
+  double focal;
   BmFace front, back, spine, fore_edge, top, bottom;
   const BmFace *sides[BM_BOX_N_SIDES];
   BmLight light;
@@ -2044,7 +2053,13 @@ bm_book_build_scene (BmScene          *scene,
 
   light = bm_book_light (options);
 
-  *scene = (BmScene) { .camera = { .focal = options->focal } };
+  /* Perspective strength is the book height over the camera distance, so
+   * the same value gives the same view at any --book-height. Zero puts the
+   * camera at an effectively infinite distance: no perspective.
+   */
+  focal = options->perspective > 0.0 ? h / options->perspective : 1e12 * h;
+
+  *scene = (BmScene) { .camera = { .focal = focal } };
   bm_scene_add_box (scene, sides, w, d, h, options->angle,
                     options->camera_height * h);
   bm_scene_light (scene, &light, options->depth_falloff);
