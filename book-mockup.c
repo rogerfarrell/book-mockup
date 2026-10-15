@@ -859,13 +859,58 @@ bm_render_gray (double level,
 }
 
 /**
+ * bm_render_loader_for_path:
+ * @path: an image file name
+ *
+ * Picks a format-specific GEGL loader from the file extension.
+ *
+ * The generic `gegl:load` meta-op always creates an internal `gegl:text`
+ * node as an error placeholder before switching to the real loader. GEGL
+ * builds without text support (pango), such as Homebrew's, then print a
+ * warning for every image loaded. Naming the loader directly avoids that,
+ * and gives a clear error for formats this program does not handle. GEGL
+ * has no public API for its own extension table, hence this one.
+ *
+ * Returns: (nullable): a GEGL operation name, or %NULL if the format is
+ *   not supported
+ */
+static const char *
+bm_render_loader_for_path (const char *path)
+{
+  static const struct
+  {
+    const char *extension;
+    const char *operation;
+  } loaders[] = {
+    { ".png",  "gegl:png-load" },
+    { ".jpg",  "gegl:jpg-load" },
+    { ".jpeg", "gegl:jpg-load" },
+    { ".tif",  "gegl:tiff-load" },
+    { ".tiff", "gegl:tiff-load" },
+    { ".webp", "gegl:webp-load" },
+  };
+  const char *dot = strrchr (path, '.');
+  gsize i;
+
+  if (dot == NULL)
+    return NULL;
+
+  for (i = 0; i < G_N_ELEMENTS (loaders); i++)
+    if (g_ascii_strcasecmp (dot, loaders[i].extension) == 0)
+      return loaders[i].operation;
+
+  return NULL;
+}
+
+/**
  * bm_render_load:
  * @root: the graph root
- * @path: image file to load
+ * @path: image file to load, in a format bm_render_loader_for_path()
+ *   accepts
  * @width: target width
  * @height: target height
  *
- * Adds `gegl:load` followed by `gegl:scale-size`.
+ * Adds a format-specific loader followed by `gegl:scale-size`.
  *
  * Returns: (transfer none): the scale node
  */
@@ -875,11 +920,14 @@ bm_render_load (GeglNode   *root,
                 double      width,
                 double      height)
 {
+  const char *loader = bm_render_loader_for_path (path);
   GeglNode *load;
   GeglNode *scale;
 
+  g_return_val_if_fail (loader != NULL, NULL);
+
   load = gegl_node_new_child (root,
-                              "operation", "gegl:load",
+                              "operation", loader,
                               "path", path,
                               NULL);
   scale = gegl_node_new_child (root,
@@ -1761,7 +1809,9 @@ bm_options_parse (BmOptions   *options,
  * @height: (out): return location for the height
  * @error: return location for a `GError`
  *
- * Reads an image's pixel size through `gegl:load`.
+ * Checks that @path exists and is in a supported format, then reads its
+ * pixel size through the format's loader. Every image is checked here
+ * before the graph is built, so bm_render_load() never sees a bad path.
  *
  * Returns: %TRUE if the image could be read
  */
@@ -1772,12 +1822,10 @@ bm_book_image_size (GeglNode    *root,
                     int         *height,
                     GError     **error)
 {
+  const char *loader = bm_render_loader_for_path (path);
   GeglNode *load;
   GeglRectangle box;
 
-  /* gegl:load substitutes a placeholder for missing files, so check
-   * first.
-   */
   if (!g_file_test (path, G_FILE_TEST_IS_REGULAR))
     {
       g_set_error (error, G_FILE_ERROR, G_FILE_ERROR_NOENT,
@@ -1785,8 +1833,16 @@ bm_book_image_size (GeglNode    *root,
       return FALSE;
     }
 
+  if (loader == NULL)
+    {
+      g_set_error (error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                   "unsupported image format “%s” "
+                   "(use PNG, JPEG, TIFF or WebP)", path);
+      return FALSE;
+    }
+
   load = gegl_node_new_child (root,
-                              "operation", "gegl:load",
+                              "operation", loader,
                               "path", path,
                               NULL);
   box = gegl_node_get_bounding_box (load);

@@ -40,6 +40,9 @@ Cover and spine should come from the same cover wrap at the same
 resolution: the book's thickness is taken from the spine image's width
 relative to the cover's height.
 
+Artwork and textures can be PNG, JPEG, TIFF or WebP (chosen by file
+extension, case-insensitive).
+
 ### Options
 
 | Option | Meaning | Default |
