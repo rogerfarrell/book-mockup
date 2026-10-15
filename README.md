@@ -12,7 +12,7 @@ soft floor shadow. Everything is done in one [GEGL](https://gegl.org) graph.
 With Homebrew, from the companion tap:
 
 ```sh
-brew install rogerfarrell/tap/book-mockup
+brew install YOUR_GITHUB_USER/tap/book-mockup
 ```
 
 From source (needs GEGL 0.4 and `pkg-config`/`pkgconf`):
@@ -39,6 +39,9 @@ book-mockup -c cover.png -s spine.png -g none              # transparent PNG
 Cover and spine should come from the same cover wrap at the same
 resolution: the book's thickness is taken from the spine image's width
 relative to the cover's height.
+
+Artwork and textures can be PNG, JPEG, TIFF or WebP (chosen by file
+extension, case-insensitive).
 
 ### Options
 
