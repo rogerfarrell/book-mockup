@@ -50,8 +50,10 @@
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #include <gegl.h>
+#include <glib/gstdio.h>
 
 #define BM_DEG_TO_RAD(d) ((d) * G_PI / 180.0)
 
@@ -1651,15 +1653,27 @@ bm_render_stack (GeglNode    *root,
  * @root: the graph root
  * @input: the final node
  * @path: output file; the format follows the extension
+ * @error: return location for a `GError`
  *
  * Adds `gegl:save` and processes the graph.
+ *
+ * `gegl:save` reports a failure only as a log warning, and
+ * gegl_node_process() returns nothing, so success is checked afterwards:
+ * the file must be a non-empty regular file modified since this call
+ * started. That also catches a failed save that leaves an older file of
+ * the same name in place.
+ *
+ * Returns: %TRUE if @path was written
  */
-static void
-bm_render_save (GeglNode   *root,
-                GeglNode   *input,
-                const char *path)
+static gboolean
+bm_render_save (GeglNode    *root,
+                GeglNode    *input,
+                const char  *path,
+                GError     **error)
 {
+  time_t started = time (NULL);
   GeglNode *save;
+  GStatBuf info;
 
   save = gegl_node_new_child (root,
                               "operation", "gegl:save",
@@ -1667,6 +1681,16 @@ bm_render_save (GeglNode   *root,
                               NULL);
   gegl_node_link (input, save);
   gegl_node_process (save);
+
+  if (g_stat (path, &info) != 0 || !S_ISREG (info.st_mode) ||
+      info.st_size == 0 || info.st_mtime < started)
+    {
+      g_set_error (error, G_FILE_ERROR, G_FILE_ERROR_FAILED,
+                   "could not write “%s”", path);
+      return FALSE;
+    }
+
+  return TRUE;
 }
 
 
@@ -1866,6 +1890,18 @@ bm_options_parse (BmOptions   *options,
 
   if (options->output == NULL)
     options->output = g_strdup ("mockup.png");
+
+  /* Fail before rendering rather than after, for the common case */
+  {
+    g_autofree char *dir = g_path_get_dirname (options->output);
+
+    if (!g_file_test (dir, G_FILE_TEST_IS_DIR))
+      {
+        g_set_error (error, G_FILE_ERROR, G_FILE_ERROR_NOENT,
+                     "output folder “%s” does not exist", dir);
+        return FALSE;
+      }
+  }
   if (options->background == NULL)
     options->background = g_strdup ("white");
 
@@ -2202,7 +2238,11 @@ main (int    argc,
 
   result = bm_render_stack (root, options.background, layers, n_layers,
                             options.canvas_width, options.canvas_height);
-  bm_render_save (root, result, options.output);
+  if (!bm_render_save (root, result, options.output, &error))
+    {
+      g_printerr ("book-mockup: %s\n", error->message);
+      status = 1;
+    }
 
 out:
   /* The graph must be released before gegl_exit(); clearing it here
