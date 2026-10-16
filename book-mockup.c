@@ -294,9 +294,15 @@ typedef struct _BmLight  BmLight;
 typedef struct _BmScene  BmScene;
 typedef struct _BmBand   BmBand;
 
+/* A pinhole camera at (0, 0, −focal), looking along +z and tilted down by
+ * @pitch. The image plane passes through z = 0, where the scale is 1 when
+ * the camera is level.
+ */
 struct _BmCamera
 {
   double focal;             /* pixels; larger is flatter                */
+  double pitch;             /* radians; positive tilts the view down    */
+  double zoom;              /* image scale; 0 is treated as 1           */
   double offset_x;          /* screen position of x = 0                 */
   double eye_y;             /* screen position of y = 0                 */
 };
@@ -402,7 +408,9 @@ struct _BmBand
  * @camera: a `BmCamera`
  * @point: a scene-space point
  *
- * Projects @point with k = f / (f + z).
+ * Projects @point: first into the tilted camera's frame (a rotation about
+ * the camera's horizontal axis), then with k = f / depth. A level camera
+ * reduces to k = f / (f + z).
  *
  * Returns: the screen-space point
  */
@@ -410,10 +418,65 @@ static BmPoint
 bm_camera_project (const BmCamera *camera,
                    const BmVec3   *point)
 {
-  double k = camera->focal / (camera->focal + point->z);
+  double depth = camera->focal + point->z;
+  double c = cos (camera->pitch);
+  double s = sin (camera->pitch);
+  double y = point->y * c - depth * s;
+  double zoom = camera->zoom > 0.0 ? camera->zoom : 1.0;
+  double k = zoom * camera->focal / (point->y * s + depth * c);
 
   return (BmPoint) { point->x * k + camera->offset_x,
-                     point->y * k + camera->eye_y };
+                     y * k + camera->eye_y };
+}
+
+/**
+ * bm_scene_aim:
+ * @scene: a `BmScene`
+ *
+ * Tilts the camera so it looks at the middle of the object, as a
+ * photographer would: from above, vertical edges then converge downward
+ * (three-point perspective) instead of staying parallel. At eye level
+ * with the object's middle the tilt is zero.
+ *
+ * Tilting moves the object deeper into the view, which would shrink it,
+ * so the camera also zooms until the nearest vertical edge is drawn at
+ * the object's height again, as it is with a level camera.
+ */
+static void
+bm_scene_aim (BmScene *scene)
+{
+  const BmPolygon *foot = &scene->footprint;
+  double target_y = scene->floor_y - scene->object_height / 2.0;
+  double target_z = 0.0;
+  int nearest = 0;
+  int i;
+
+  if (foot->n_points == 0)
+    return;
+
+  for (i = 0; i < foot->n_points; i++)
+    {
+      target_z += foot->points[i].y;
+      if (foot->points[i].y < foot->points[nearest].y)
+        nearest = i;
+    }
+  target_z /= foot->n_points;
+
+  scene->camera.pitch = atan2 (target_y, scene->camera.focal + target_z);
+  scene->camera.zoom = 1.0;
+
+  {
+    BmVec3 top = { foot->points[nearest].x,
+                   scene->floor_y - scene->object_height,
+                   foot->points[nearest].y };
+    BmVec3 bottom = { top.x, scene->floor_y, top.z };
+    BmPoint a = bm_camera_project (&scene->camera, &top);
+    BmPoint b = bm_camera_project (&scene->camera, &bottom);
+    double drawn = hypot (b.x - a.x, b.y - a.y);
+
+    if (drawn > 0.0)
+      scene->camera.zoom = scene->object_height / drawn;
+  }
 }
 
 /**
@@ -2062,6 +2125,7 @@ bm_book_build_scene (BmScene          *scene,
   *scene = (BmScene) { .camera = { .focal = focal } };
   bm_scene_add_box (scene, sides, w, d, h, options->angle,
                     options->camera_height * h);
+  bm_scene_aim (scene);
   bm_scene_light (scene, &light, options->depth_falloff);
   bm_scene_center (scene, options->canvas_width, options->canvas_height);
 
