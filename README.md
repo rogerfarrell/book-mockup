@@ -52,7 +52,7 @@ extension, case-insensitive).
 | `-k`, `--back=FILE` | Back cover image | plain board |
 | `-o`, `--output=FILE` | Output file; format follows the extension | `mockup.png` |
 | `-a`, `--angle=DEG` | Rotation: 0 front, 90 spine, 180 back, 155 back with spine | `25` |
-| `-f`, `--focal=PX` | Focal length in pixels; larger is flatter | `6000` |
+| `-p`, `--perspective=N` | Perspective strength; larger exaggerates the near side, 0 is flat | `0.3` |
 | `-W`, `--width=PX` | Canvas width | `2400` |
 | `-H`, `--height=PX` | Canvas height | `2400` |
 | `-b`, `--book-height=PX` | Book height on the canvas | `1800` |
@@ -77,9 +77,15 @@ extension, case-insensitive).
   varying alpha, so it composites cleanly onto any background. Rendering
   on white and removing the white later leaves a gray shadow; use `-g none`
   for assets that will sit on other backgrounds.
-- **Focal length is in pixels.** If you shrink the book with `-b`, shrink
-  `-f` in proportion to keep the same viewpoint (the default is about
-  3.3 × book height).
+- **Perspective strength** is the book height divided by the camera's
+  distance, so the same value gives the same view at any `--book-height`.
+  `0.3` is a natural product shot; `0.6` or more looks like a close,
+  wide-angle photo.
+- **The camera aims at the book.** With `--camera-height` above or below
+  mid-book, the camera tilts toward the book's middle, so vertical edges
+  converge as in a real photo taken from above. It also zooms so the
+  nearest vertical edge stays at `--book-height`. At `--perspective 0` the
+  camera is infinitely far away, so its height has no effect.
 - **Linear light.** Shading and textures work in linear light, as GEGL
   does internally, so strengths read a little lighter than the same numbers
   would in an sRGB editor.
