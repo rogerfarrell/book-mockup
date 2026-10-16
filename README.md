@@ -81,6 +81,11 @@ extension, case-insensitive).
   distance, so the same value gives the same view at any `--book-height`.
   `0.3` is a natural product shot; `0.6` or more looks like a close,
   wide-angle photo.
+- **The camera aims at the book.** With `--camera-height` above or below
+  mid-book, the camera tilts toward the book's middle, so vertical edges
+  converge as in a real photo taken from above. It also zooms so the
+  nearest vertical edge stays at `--book-height`. At `--perspective 0` the
+  camera is infinitely far away, so its height has no effect.
 - **Linear light.** Shading and textures work in linear light, as GEGL
   does internally, so strengths read a little lighter than the same numbers
   would in an sRGB editor.
